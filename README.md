@@ -28,8 +28,10 @@ These are automatically traversed and displayed, like those in the event params 
 This outputs Excel-flavoured CSV.
 
 ## Operation
-Install Python 3. Try running Converter.py in a directory with a bunch of Firebase JSON in; the tool will try and output a CSV file per JSON file to the same location.
+Install Python 3. Try running Converter.py in a directory with a bunch of Firebase analytics JSON in; the tool will try and output a CSV file per JSON file to the same location.
 
 This thing requires json, csv and glob to run, so pip install any of those that Python declares to be missing, baffling, or otherwise confusing.
 
 While this *should* work on Pythons 2 and 3, I have only actually run it on Python 3.6, so no guarantees.
+
+Behaviour on non-Firebase analytics JSON is unknown and if you have CSV in the directory already, this thing will overwrite it brutally, probably. Be careful.
