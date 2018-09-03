@@ -7,6 +7,7 @@ Created on 2018-08-31
 import json
 import csv
 import glob
+import datetime
 
 # "event_params": [
 #       {
@@ -189,6 +190,9 @@ def parseJson(json_root, csv_file):
             if key not in __keys_structured:
                 if key not in __keys:
                     __keys.append(key)
+                    if "timestamp" in key and "offset" not in key:
+                        key2 = key.replace("timestamp", "iso8601")
+                        __keys.append(key2)
             else:
                 if key == __key_event_params or key == __key_user_properties:
                     sublist = json_object[key]
@@ -272,9 +276,15 @@ def getStructElements(__subkeys, treekey, json_object, row):
 def tryGet(json_object, key):
     if key in json_object:
         return json_object[key]
+    elif "iso8601" in key:
+        timestamp = tryGet(json_object, key.replace("iso8601", "timestamp"))
+        if timestamp is not None and timestamp != '':
+            print(timestamp[:-6])
+            return datetime.date.fromtimestamp(int(timestamp[:-6])).isoformat()
+        else:
+            return ''
     else:
         return ''
-
 
 if __name__ == '__main__':
     pass
