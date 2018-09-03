@@ -280,7 +280,7 @@ def tryGet(json_object, key):
         timestamp = tryGet(json_object, key.replace("iso8601", "timestamp"))
         if timestamp is not None and timestamp != '':
             print(timestamp[:-6])
-            return datetime.date.fromtimestamp(int(timestamp[:-6])).isoformat()
+            return datetime.datetime.fromtimestamp(int(timestamp[:-6])).isoformat()
         else:
             return ''
     else:
