@@ -175,7 +175,45 @@ __keys_structured = [
 ]
 
 
-def parseJson(json_root, csv_file):
+def __segment(json_root):
+
+    # segment by user
+    by_user = {}
+
+    for json_object in json_root:
+        uid = json_object["user_id"]
+        user_events = by_user.get(uid, None)
+        if user_events is None:
+            user_events = []
+            by_user[uid] = user_events
+        user_events.append(json_object)
+
+    # segment by city
+    by_city = {}
+
+    for json_object in json_root:
+        city = json_object["geo"]["city"]
+        city_events = by_city.get(city, None)
+        if city_events is None:
+            city_events = []
+            by_city[city] = city_events
+        city_events.append(json_object)
+
+    # segment by event
+    by_event = {}
+
+    for json_object in json_root:
+        event = json_object["event_name"]
+        event_events = by_event.get(event, None)
+        if event_events is None:
+            event_events = []
+            by_event[event] = event_events
+        event_events.append(json_object)
+
+    return by_user, by_city, by_event
+
+
+def parseJson(json_root, csv_file_mantissa, csv_file_extender):
     __keys = []
     __subkeys = {}
     __subkeys[__key_event_params] = []
@@ -201,8 +239,28 @@ def parseJson(json_root, csv_file):
                         if key2 not in __subkeys[key]:
                             __subkeys[key].append(key2)
 
-    with open(csv_file, 'w') as outputFile:
+    by_user, by_city, by_event = __segment(json_root)
+
+    with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
         writeCsv(json_root, __keys, __subkeys, outputFile)
+
+    for user in by_user.keys():
+        if user is not None:
+            collection = by_user[user]
+            with open(csv_file_mantissa + "_user_" + user + csv_file_extender, 'w') as outputFile:
+                writeCsv(collection, __keys, __subkeys, outputFile)
+
+    for city in by_city.keys():
+        if city is not None:
+            collection = by_city[city]
+            with open(csv_file_mantissa + "_city_" + city + csv_file_extender, 'w') as outputFile:
+                writeCsv(collection, __keys, __subkeys, outputFile)
+
+    for event in by_event.keys():
+        if event is not None:
+            collection = by_event[event]
+            with open(csv_file_mantissa + "_event_" + event + csv_file_extender, 'w') as outputFile:
+                writeCsv(collection, __keys, __subkeys, outputFile)
 
 
 def writeCsv(json_list, __keys, __subkeys, outputFile):
@@ -279,7 +337,7 @@ def tryGet(json_object, key):
     elif "iso8601" in key:
         timestamp = tryGet(json_object, key.replace("iso8601", "timestamp"))
         if timestamp is not None and timestamp != '':
-            print(timestamp[:-6])
+            # print(timestamp[:-6])
             return datetime.datetime.fromtimestamp(int(timestamp[:-6])).isoformat()
         else:
             return ''
@@ -295,12 +353,13 @@ json_file_iterator = glob.iglob('*.json')
 while True:
     try:
         json_file = next(json_file_iterator)
-        csv_file = json_file[:-5] + ".csv"
+        csv_file_mantissa = json_file[:-5]
+        csv_file_extender = ".csv"
 
         with open(json_file, 'r') as inputFile:
 
             json_root = json.load(inputFile)
-            parseJson(json_root, csv_file)
+            parseJson(json_root, csv_file_mantissa, csv_file_extender)
 
     except StopIteration:
         break
