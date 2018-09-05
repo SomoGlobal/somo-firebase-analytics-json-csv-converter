@@ -338,6 +338,93 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             with open(csv_file_mantissa + "_centre_" + centre + csv_file_extender, 'w') as outputFile:
                 writeCsv(headings, collection, outputFile)
 
+    event_counts = {}
+    event_names = {}
+    event_counts_per_user = {}
+
+    for json_object in json_root:
+        if json_object["user_id"] not in event_counts_per_user.keys():
+            event_counts_per_user[json_object["user_id"]] = {}
+
+        if json_object["event_name"] == "button_press":
+
+            button_name = json_object["button_name"]
+            button_name_qualified = "button_" + button_name
+
+            if button_name_qualified not in event_names.keys():
+                event_names[button_name_qualified] = ["button_press", button_name]
+
+            if button_name_qualified not in event_counts_per_user[json_object["user_id"]].keys():
+                event_counts_per_user[json_object["user_id"]][button_name_qualified] = 1
+            else:
+                event_counts_per_user[json_object["user_id"]][button_name_qualified] += 1
+
+            if button_name_qualified not in event_counts.keys():
+                event_counts[button_name_qualified] = 1
+            else:
+                event_counts[button_name_qualified] += 1
+
+        if json_object["event_name"] == "user_engagement":
+
+            screen_class = json_object["firebase_screen_class"]
+            screen_class_qualified = "user_engagement_" + screen_class
+
+            if screen_class_qualified not in event_names.keys():
+                event_names[screen_class_qualified] = ["user_engagement", screen_class]
+
+            if screen_class_qualified not in event_counts_per_user[json_object["user_id"]].keys():
+                event_counts_per_user[json_object["user_id"]][screen_class_qualified] = 1
+            else:
+                event_counts_per_user[json_object["user_id"]][screen_class_qualified] += 1
+
+            if screen_class_qualified not in event_counts.keys():
+                event_counts[screen_class_qualified] = 1
+            else:
+                event_counts[screen_class_qualified] += 1
+
+        if json_object["event_name"] == "screen_view":
+
+            screen_class = json_object["firebase_screen_class"]
+            screen_class_qualified = "screen_view_" + screen_class
+
+            if screen_class_qualified not in event_names.keys():
+                event_names[screen_class_qualified] = ["screen_view", screen_class]
+
+            if screen_class_qualified not in event_counts_per_user[json_object["user_id"]].keys():
+                event_counts_per_user[json_object["user_id"]][screen_class_qualified] = 1
+            else:
+                event_counts_per_user[json_object["user_id"]][screen_class_qualified] += 1
+
+            if screen_class_qualified not in event_counts.keys():
+                event_counts[screen_class_qualified] = 1
+            else:
+                event_counts[screen_class_qualified] += 1
+
+
+
+    for user in event_counts_per_user.keys():
+        with open("some_events_" + user + ".csv", 'w') as outputFile:
+            writer = csv.writer(outputFile, dialect='excel')
+            writer.writerow(["name", "subtype" "count"])
+            for key in event_counts_per_user[user].keys():
+                rowarray = [event_names[key][0], event_names[key][1], event_counts_per_user[user][key]]
+                writer.writerow(rowarray)
+
+    with open("some_events_users.csv", 'w') as outputFile:
+        writer = csv.writer(outputFile, dialect='excel')
+        writer.writerow(["user", "name", "subtype", "count"])
+        for user in event_counts_per_user.keys():
+            for key in event_counts_per_user[user].keys():
+                rowarray = [user, event_names[key][0], event_names[key][1], event_counts_per_user[user][key]]
+                writer.writerow(rowarray)
+
+    with open("some_events.csv", 'w') as outputFile:
+        writer = csv.writer(outputFile, dialect='excel')
+        writer.writerow(["name", "subtype", "count"])
+        for key in event_counts.keys():
+            rowarray = [event_names[key][0], event_names[key][1], event_counts[key]]
+            writer.writerow(rowarray)
+
 
 def writeCsv(headings, rows, outputFile):
     writer = csv.writer(outputFile, dialect='excel')
