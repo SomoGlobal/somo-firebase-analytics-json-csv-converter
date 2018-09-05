@@ -174,7 +174,6 @@ __keys_structured = [
     __key_traffic_source
 ]
 
-
 def __segment(json_root):
 
     # segment by user
@@ -192,7 +191,7 @@ def __segment(json_root):
     by_city = {}
 
     for json_object in json_root:
-        city = json_object["geo"]["city"]
+        city = json_object["city"]
         city_events = by_city.get(city, None)
         if city_events is None:
             city_events = []
@@ -210,10 +209,32 @@ def __segment(json_root):
             by_event[event] = event_events
         event_events.append(json_object)
 
-    return by_user, by_city, by_event
+    # segment by event
+    by_session = {}
+
+    for json_object in json_root:
+        session = json_object["user_session_generated_id"]
+        session_events = by_session.get(session, None)
+        if session_events is None:
+            session_events = []
+            by_session[session] = session_events
+        session_events.append(json_object)
+
+    # segment by event
+    by_centre = {}
+
+    for json_object in json_root:
+        centre = json_object["user_retailer"]
+        centre_events = by_centre.get(centre, None)
+        if centre_events is None:
+            centre_events = []
+            by_centre[centre] = centre_events
+        centre_events.append(json_object)
+
+    return by_user, by_city, by_event, by_session, by_centre
 
 
-def parseJson(json_root, csv_file_mantissa, csv_file_extender):
+def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
     __keys = []
     __subkeys = {}
     __subkeys[__key_event_params] = []
@@ -223,7 +244,7 @@ def parseJson(json_root, csv_file_mantissa, csv_file_extender):
     __subkeys[__key_geo] = __subkeys_geo
     __subkeys[__key_traffic_source] = __subkeys_traffic_source
 
-    for json_object in json_root:
+    for json_object in json_structured:
         for key in json_object:
             if key not in __keys_structured:
                 if key not in __keys:
@@ -239,33 +260,95 @@ def parseJson(json_root, csv_file_mantissa, csv_file_extender):
                         if key2 not in __subkeys[key]:
                             __subkeys[key].append(key2)
 
-    by_user, by_city, by_event = __segment(json_root)
+    headings, json_root = flatten(json_structured, __keys, __subkeys)
+    headings.append("user_session_generated_id")
+
+    __user_retailer = {}
+    __user_area = {}
+    __user_session = {}
+
+    print("Getting logins")
+
+    for json_object in json_root:
+        uid = json_object["user_id"]
+        if json_object["event_name"] == "AnalyticsEventLogin":
+            print(uid)
+            if uid not in __user_retailer.keys():
+                __user_retailer[uid] = json_object["user_retailer"]
+            if uid not in __user_area.keys():
+                __user_area[uid] = json_object["user_area"]
+            if uid not in __user_session.keys():
+                __user_session[uid] = 0
+
+    print("Everything else")
+
+    for json_object in json_root:
+        uid = json_object["user_id"]
+        print(uid)
+        if json_object["event_name"] == "AnalyticsEventLogin":
+            __user_retailer[uid] = json_object["user_retailer"]
+            __user_area[uid] = json_object["user_area"]
+            __user_session[uid] += 1
+        else:
+            if uid in __user_retailer.keys():
+                json_object["user_retailer"] = __user_retailer[uid]
+            else:
+                json_object["user_retailer"] = "User login not captured"
+            if uid in __user_area.keys():
+                json_object["user_area"] = __user_area[uid]
+            else:
+                json_object["user_retailer"] = "User login not captured"
+        if uid in __user_session.keys():
+            json_object["user_session_generated_id"] = uid + "_" + str(__user_session[uid])
+        else:
+            json_object["user_session_generated_id"] = "User login not captured"
+
+    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
 
     with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
-        writeCsv(json_root, __keys, __subkeys, outputFile)
+        writeCsv(headings, json_root, outputFile)
 
     for user in by_user.keys():
         if user is not None:
             collection = by_user[user]
             with open(csv_file_mantissa + "_user_" + user + csv_file_extender, 'w') as outputFile:
-                writeCsv(collection, __keys, __subkeys, outputFile)
+                writeCsv(headings, collection, outputFile)
 
     for city in by_city.keys():
         if city is not None:
             collection = by_city[city]
             with open(csv_file_mantissa + "_city_" + city + csv_file_extender, 'w') as outputFile:
-                writeCsv(collection, __keys, __subkeys, outputFile)
+                writeCsv(headings, collection, outputFile)
 
     for event in by_event.keys():
         if event is not None:
             collection = by_event[event]
             with open(csv_file_mantissa + "_event_" + event + csv_file_extender, 'w') as outputFile:
-                writeCsv(collection, __keys, __subkeys, outputFile)
+                writeCsv(headings, collection, outputFile)
+
+    for session in by_session.keys():
+        if session is not None:
+            collection = by_session[session]
+            with open(csv_file_mantissa + "_session_" + session + csv_file_extender, 'w') as outputFile:
+                writeCsv(headings, collection, outputFile)
+
+    for centre in by_centre.keys():
+        if centre is not None:
+            collection = by_centre[centre]
+            with open(csv_file_mantissa + "_centre_" + centre + csv_file_extender, 'w') as outputFile:
+                writeCsv(headings, collection, outputFile)
 
 
-def writeCsv(json_list, __keys, __subkeys, outputFile):
+def writeCsv(headings, rows, outputFile):
     writer = csv.writer(outputFile, dialect='excel')
+    writer.writerow(headings)
+    for row in rows:
+        rowarray = []
+        for heading in headings:
+            rowarray.append(row[heading])
+        writer.writerow(rowarray)
 
+def flatten(json_list, __keys, __subkeys):
     headings = __keys \
                + __subkeys[__key_event_params] \
                + __subkeys[__key_user_properties] \
@@ -273,14 +356,14 @@ def writeCsv(json_list, __keys, __subkeys, outputFile):
                + __subkeys[__key_device] \
                + __subkeys[__key_geo] \
                + __subkeys[__key_traffic_source]
-    writer.writerow(headings)
+
+    output = []
 
     """ write data """
     for json_object in json_list:
-        row = []
-        for key in __keys:
-            row.append(tryGet(json_object, key))
-
+        row = {}
+        for key in headings:
+            row[key] = tryGet(json_object, key)
 
         getSubElements(__subkeys, __key_event_params, json_object, row)
         getSubElements(__subkeys, __key_user_properties, json_object, row)
@@ -289,10 +372,9 @@ def writeCsv(json_list, __keys, __subkeys, outputFile):
         getStructElements(__subkeys, __key_geo, json_object, row)
         getStructElements(__subkeys, __key_traffic_source, json_object, row)
 
-        writer.writerow(row)
+        output.append(row)
 
-    return
-
+    return headings, output
 
 def getSubElements(__subkeys, treekey, json_object, row):
     tree = json_object[treekey]
@@ -312,23 +394,23 @@ def getSubElements(__subkeys, treekey, json_object, row):
             floot = value[__key_fv] if __key_fv in value else None
             dibble = value[__key_dv] if __key_dv in value else None
             timstomp = value[__key_ts_mic] if __key_ts_mic in value else None
-            if timstomp is not None:
-                output = timstomp
-            elif strang is not None:
+            if strang is not None:
                 output = strang
+            elif timstomp is not None:
+                output = timstomp
             elif anteger is not None:
                 output = anteger
             elif floot is not None:
                 output = floot
             elif dibble is not None:
                 output = dibble
-        row.append(output)
+        row[key] = output
 
 
 def getStructElements(__subkeys, treekey, json_object, row):
     tree = json_object[treekey]
     for key in __subkeys[treekey]:
-        row.append(tryGet(tree, key))
+        row[key] = tryGet(tree, key)
 
 
 def tryGet(json_object, key):
@@ -358,7 +440,7 @@ while True:
 
         with open(json_file, 'r') as inputFile:
 
-            json_root = json.load(inputFile)
+            json_root = sorted(json.load(inputFile), key=lambda element: element["event_timestamp"])
             parseJson(json_root, csv_file_mantissa, csv_file_extender)
 
     except StopIteration:
