@@ -163,6 +163,10 @@ __key_fv = "float_value"
 __key_dv = "double_value"
 __key_ts_mic = "set_timestamp_micros"
 
+# common keys for segmentation
+__key_user_id = "user_id"
+__key_event_name = "event_name"
+
 
 # array of top-level keys to regard as structured
 __keys_structured = [
@@ -180,7 +184,7 @@ def __segment(json_root):
     by_user = {}
 
     for json_object in json_root:
-        uid = json_object["user_id"]
+        uid = json_object[__key_user_id]
         user_events = by_user.get(uid, None)
         if user_events is None:
             user_events = []
@@ -188,21 +192,21 @@ def __segment(json_root):
         user_events.append(json_object)
 
     # segment by city
-    by_city = {}
+#    by_city = {}
 
-    for json_object in json_root:
-        city = json_object["city"]
-        city_events = by_city.get(city, None)
-        if city_events is None:
-            city_events = []
-            by_city[city] = city_events
-        city_events.append(json_object)
+#    for json_object in json_root:
+#        city = json_object["city"]
+#        city_events = by_city.get(city, None)
+#        if city_events is None:
+#            city_events = []
+#            by_city[city] = city_events
+#        city_events.append(json_object)
 
     # segment by event
     by_event = {}
 
     for json_object in json_root:
-        event = json_object["event_name"]
+        event = json_object[__key_event_name]
         event_events = by_event.get(event, None)
         if event_events is None:
             event_events = []
@@ -231,10 +235,11 @@ def __segment(json_root):
             by_centre[centre] = centre_events
         centre_events.append(json_object)
 
-    return by_user, by_city, by_event, by_session, by_centre
+#    return by_user, by_city, by_event, by_session, by_centre
+    return by_user, by_event, by_session, by_centre
 
 
-def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
+def parseJson(json_structured):
     __keys = []
     __subkeys = {}
     __subkeys[__key_event_params] = []
@@ -260,50 +265,15 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
                         if key2 not in __subkeys[key]:
                             __subkeys[key].append(key2)
 
-    headings, json_root = flatten(json_structured, __keys, __subkeys)
-    headings.append("user_session_generated_id")
+    return flatten(json_structured, __keys, __subkeys)
 
-    __user_retailer = {}
-    __user_area = {}
-    __user_session = {}
 
-    print("Getting logins")
+def writeCsvs(headings, json_root, csv_file_mantissa, csv_file_extender):
 
-    for json_object in json_root:
-        uid = json_object["user_id"]
-        if json_object["event_name"] == "AnalyticsEventLogin":
-            print(uid)
-            if uid not in __user_retailer.keys():
-                __user_retailer[uid] = json_object["user_retailer"]
-            if uid not in __user_area.keys():
-                __user_area[uid] = json_object["user_area"]
-            if uid not in __user_session.keys():
-                __user_session[uid] = 0
+    __propagate_user_properties_from_login(headings, json_root)
 
-    print("Everything else")
-
-    for json_object in json_root:
-        uid = json_object["user_id"]
-        print(uid)
-        if json_object["event_name"] == "AnalyticsEventLogin":
-            __user_retailer[uid] = json_object["user_retailer"]
-            __user_area[uid] = json_object["user_area"]
-            __user_session[uid] += 1
-        else:
-            if uid in __user_retailer.keys():
-                json_object["user_retailer"] = __user_retailer[uid]
-            else:
-                json_object["user_retailer"] = "User login not captured"
-            if uid in __user_area.keys():
-                json_object["user_area"] = __user_area[uid]
-            else:
-                json_object["user_retailer"] = "User login not captured"
-        if uid in __user_session.keys():
-            json_object["user_session_generated_id"] = uid + "_" + str(__user_session[uid])
-        else:
-            json_object["user_session_generated_id"] = "User login not captured"
-
-    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
+    #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
+    by_user, by_event, by_session, by_centre = __segment(json_root)
 
     with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
         writeCsv(headings, json_root, outputFile)
@@ -314,11 +284,11 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             with open(csv_file_mantissa + "_user_" + user + csv_file_extender, 'w') as outputFile:
                 writeCsv(headings, collection, outputFile)
 
-    for city in by_city.keys():
-        if city is not None:
-            collection = by_city[city]
-            with open(csv_file_mantissa + "_city_" + city + csv_file_extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
+#    for city in by_city.keys():
+#        if city is not None:
+#            collection = by_city[city]
+#            with open(csv_file_mantissa + "_city_" + city + csv_file_extender, 'w') as outputFile:
+#                writeCsv(headings, collection, outputFile)
 
     for event in by_event.keys():
         if event is not None:
@@ -338,15 +308,19 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             with open(csv_file_mantissa + "_centre_" + centre + csv_file_extender, 'w') as outputFile:
                 writeCsv(headings, collection, outputFile)
 
+    __output_digests(json_root)
+
+
+def __output_digests(json_root):
     event_counts = {}
     event_names = {}
     event_counts_per_user = {}
-
     for json_object in json_root:
-        if json_object["user_id"] not in event_counts_per_user.keys():
-            event_counts_per_user[json_object["user_id"]] = {}
+        uid = json_object[__key_user_id]
+        if uid not in event_counts_per_user.keys():
+            event_counts_per_user[uid] = {}
 
-        if json_object["event_name"] == "button_press":
+        if json_object[__key_event_name] == "button_press":
 
             button_name = json_object["button_name"]
             button_name_qualified = "button_" + button_name
@@ -354,17 +328,17 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             if button_name_qualified not in event_names.keys():
                 event_names[button_name_qualified] = ["button_press", button_name]
 
-            if button_name_qualified not in event_counts_per_user[json_object["user_id"]].keys():
-                event_counts_per_user[json_object["user_id"]][button_name_qualified] = 1
+            if button_name_qualified not in event_counts_per_user[uid].keys():
+                event_counts_per_user[uid][button_name_qualified] = 1
             else:
-                event_counts_per_user[json_object["user_id"]][button_name_qualified] += 1
+                event_counts_per_user[uid][button_name_qualified] += 1
 
             if button_name_qualified not in event_counts.keys():
                 event_counts[button_name_qualified] = 1
             else:
                 event_counts[button_name_qualified] += 1
 
-        if json_object["event_name"] == "user_engagement":
+        if json_object[__key_event_name] == "user_engagement":
 
             screen_class = json_object["firebase_screen_class"]
             screen_class_qualified = "user_engagement_" + screen_class
@@ -372,17 +346,17 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             if screen_class_qualified not in event_names.keys():
                 event_names[screen_class_qualified] = ["user_engagement", screen_class]
 
-            if screen_class_qualified not in event_counts_per_user[json_object["user_id"]].keys():
-                event_counts_per_user[json_object["user_id"]][screen_class_qualified] = 1
+            if screen_class_qualified not in event_counts_per_user[uid].keys():
+                event_counts_per_user[uid][screen_class_qualified] = 1
             else:
-                event_counts_per_user[json_object["user_id"]][screen_class_qualified] += 1
+                event_counts_per_user[uid][screen_class_qualified] += 1
 
             if screen_class_qualified not in event_counts.keys():
                 event_counts[screen_class_qualified] = 1
             else:
                 event_counts[screen_class_qualified] += 1
 
-        if json_object["event_name"] == "screen_view":
+        if json_object[__key_event_name] == "screen_view":
 
             screen_class = json_object["firebase_screen_class"]
             screen_class_qualified = "screen_view_" + screen_class
@@ -390,18 +364,15 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             if screen_class_qualified not in event_names.keys():
                 event_names[screen_class_qualified] = ["screen_view", screen_class]
 
-            if screen_class_qualified not in event_counts_per_user[json_object["user_id"]].keys():
-                event_counts_per_user[json_object["user_id"]][screen_class_qualified] = 1
+            if screen_class_qualified not in event_counts_per_user[uid].keys():
+                event_counts_per_user[uid][screen_class_qualified] = 1
             else:
-                event_counts_per_user[json_object["user_id"]][screen_class_qualified] += 1
+                event_counts_per_user[uid][screen_class_qualified] += 1
 
             if screen_class_qualified not in event_counts.keys():
                 event_counts[screen_class_qualified] = 1
             else:
                 event_counts[screen_class_qualified] += 1
-
-
-
     for user in event_counts_per_user.keys():
         with open("some_events_" + user + ".csv", 'w') as outputFile:
             writer = csv.writer(outputFile, dialect='excel')
@@ -409,7 +380,6 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             for key in event_counts_per_user[user].keys():
                 rowarray = [event_names[key][0], event_names[key][1], event_counts_per_user[user][key]]
                 writer.writerow(rowarray)
-
     with open("some_events_users.csv", 'w') as outputFile:
         writer = csv.writer(outputFile, dialect='excel')
         writer.writerow(["user", "name", "subtype", "count"])
@@ -417,7 +387,6 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             for key in event_counts_per_user[user].keys():
                 rowarray = [user, event_names[key][0], event_names[key][1], event_counts_per_user[user][key]]
                 writer.writerow(rowarray)
-
     with open("some_events.csv", 'w') as outputFile:
         writer = csv.writer(outputFile, dialect='excel')
         writer.writerow(["name", "subtype", "count"])
@@ -426,13 +395,58 @@ def parseJson(json_structured, csv_file_mantissa, csv_file_extender):
             writer.writerow(rowarray)
 
 
+def __propagate_user_properties_from_login(headings, json_root):
+    headings.append("user_session_generated_id")
+    __user_retailer = {}
+    __user_area = {}
+
+
+    __user_session = {}
+    # print("Getting logins")
+    __key_event_login = "AnalyticsEventLogin"
+    for json_object in json_root:
+        uid = json_object[__key_user_id]
+        if json_object[__key_event_name] == __key_event_login:
+            # print(uid)
+            if uid not in __user_retailer.keys():
+                __user_retailer[uid] = json_object["user_retailer"]
+            if uid not in __user_area.keys():
+                __user_area[uid] = json_object["user_area"]
+            if uid not in __user_session.keys():
+                __user_session[uid] = 0
+    # print("Everything else")
+    for json_object in json_root:
+        uid = json_object[__key_user_id]
+        # print(uid)
+        if json_object[__key_event_name] == __key_event_login:
+            __user_retailer[uid] = json_object["user_retailer"]
+            __user_area[uid] = json_object["user_area"]
+            __user_session[uid] += 1
+        else:
+            if uid in __user_retailer.keys():
+                json_object["user_retailer"] = __user_retailer[uid]
+            else:
+                json_object["user_retailer"] = "User login not captured"
+            if uid in __user_area.keys():
+                json_object["user_area"] = __user_area[uid]
+            else:
+                json_object["user_retailer"] = "User login not captured"
+        if uid in __user_session.keys():
+            json_object["user_session_generated_id"] = uid + "_" + str(__user_session[uid])
+        else:
+            json_object["user_session_generated_id"] = "User login not captured"
+
+
 def writeCsv(headings, rows, outputFile):
     writer = csv.writer(outputFile, dialect='excel')
     writer.writerow(headings)
     for row in rows:
         rowarray = []
         for heading in headings:
-            rowarray.append(row[heading])
+            if heading in row.keys():
+                rowarray.append(row[heading])
+            else:
+                rowarray.append("")
         writer.writerow(rowarray)
 
 def flatten(json_list, __keys, __subkeys):
@@ -518,17 +532,30 @@ if __name__ == '__main__':
 
 json_file_iterator = glob.iglob('*.json')
 
+headings = []
+json_root = []
+
+mantissa = "firebase"
+extender = ".csv"
 
 while True:
     try:
         json_file = next(json_file_iterator)
-        csv_file_mantissa = json_file[:-5]
-        csv_file_extender = ".csv"
 
         with open(json_file, 'r') as inputFile:
 
-            json_root = sorted(json.load(inputFile), key=lambda element: element["event_timestamp"])
-            parseJson(json_root, csv_file_mantissa, csv_file_extender)
+            jsondata = json.load(inputFile)
+            __headings, __json_root = parseJson(jsondata)
+
+            for heading in __headings:
+                if heading not in headings:
+                    headings.append(heading)
+
+            json_root.extend(__json_root)
 
     except StopIteration:
         break
+
+json_root_sorted = sorted(json_root, key=lambda element: element["event_timestamp"])
+
+writeCsvs(headings, json_root_sorted, mantissa, extender)
