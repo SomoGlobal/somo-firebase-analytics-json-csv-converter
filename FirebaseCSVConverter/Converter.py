@@ -177,45 +177,26 @@ __keys_structured = [
 __key_user_id = "user_id"
 __key_event_name = "event_name"
 __key_event_login = "AnalyticsEventLogin"
+__key_user_retailer = "user_retailer"
 
 
 
-def __segment(json_root):
+def __segment(json_root, keys):
 
-    # segment by user
-    by_user = {}
+    tuples = []
+    for key in keys:
+        tuples.append([key, {}])
 
-    for json_object in json_root:
-        uid = json_object[__key_user_id]
-        user_events = by_user.get(uid, None)
-        if user_events is None:
-            user_events = []
-            by_user[uid] = user_events
-        user_events.append(json_object)
+    for tuple in tuples:
+        for json_object in json_root:
+            uid = json_object[tuple[0]]
+            keyed_events = tuple[1].get(uid, None)
+            if keyed_events is None:
+                keyed_events = []
+                tuple[1][uid] = keyed_events
+            keyed_events.append(json_object)
 
-    # segment by event
-    by_event = {}
-
-    for json_object in json_root:
-        event = json_object[__key_event_name]
-        event_events = by_event.get(event, None)
-        if event_events is None:
-            event_events = []
-            by_event[event] = event_events
-        event_events.append(json_object)
-
-    # segment by event
-    by_centre = {}
-
-    for json_object in json_root:
-        centre = json_object["user_retailer"]
-        centre_events = by_centre.get(centre, None)
-        if centre_events is None:
-            centre_events = []
-            by_centre[centre] = centre_events
-        centre_events.append(json_object)
-
-    return by_user, by_event, by_centre
+    return tuples
 
 
 def parseJson(json_structured):
@@ -249,29 +230,18 @@ def parseJson(json_structured):
 
 def writeCsvs(headings, json_root, csv_file_mantissa, csv_file_extender):
 
-    #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
-    by_user, by_event, by_centre = __segment(json_root)
-
     with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
         writeCsv(headings, json_root, outputFile)
 
-    for user in by_user.keys():
-        if user is not None:
-            collection = by_user[user]
-            with open(csv_file_mantissa + "_user_" + user + csv_file_extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
+    #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
+    tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
 
-    for event in by_event.keys():
-        if event is not None:
-            collection = by_event[event]
-            with open(csv_file_mantissa + "_event_" + event + csv_file_extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
-
-    for centre in by_centre.keys():
-        if centre is not None:
-            collection = by_centre[centre]
-            with open(csv_file_mantissa + "_centre_" + centre + csv_file_extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
+    for tuple in tuples:
+        for key in tuple[1].keys():
+            if key is not None:
+                collection = tuple[1][key]
+                with open(csv_file_mantissa + "_" + tuple[0] + "_" + key + "_" + csv_file_extender, 'w') as outputFile:
+                    writeCsv(headings, collection, outputFile)
 
     __output_digests(json_root)
 
