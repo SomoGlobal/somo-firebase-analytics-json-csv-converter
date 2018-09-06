@@ -163,11 +163,6 @@ __key_fv = "float_value"
 __key_dv = "double_value"
 __key_ts_mic = "set_timestamp_micros"
 
-# common keys for segmentation
-__key_user_id = "user_id"
-__key_event_name = "event_name"
-
-
 # array of top-level keys to regard as structured
 __keys_structured = [
     __key_event_params,
@@ -177,6 +172,13 @@ __keys_structured = [
     __key_app_info,
     __key_traffic_source
 ]
+
+# common keys for segmentation
+__key_user_id = "user_id"
+__key_event_name = "event_name"
+__key_event_login = "AnalyticsEventLogin"
+
+
 
 def __segment(json_root):
 
@@ -191,17 +193,6 @@ def __segment(json_root):
             by_user[uid] = user_events
         user_events.append(json_object)
 
-    # segment by city
-#    by_city = {}
-
-#    for json_object in json_root:
-#        city = json_object["city"]
-#        city_events = by_city.get(city, None)
-#        if city_events is None:
-#            city_events = []
-#            by_city[city] = city_events
-#        city_events.append(json_object)
-
     # segment by event
     by_event = {}
 
@@ -214,17 +205,6 @@ def __segment(json_root):
         event_events.append(json_object)
 
     # segment by event
-    by_session = {}
-
-    for json_object in json_root:
-        session = json_object["user_session_generated_id"]
-        session_events = by_session.get(session, None)
-        if session_events is None:
-            session_events = []
-            by_session[session] = session_events
-        session_events.append(json_object)
-
-    # segment by event
     by_centre = {}
 
     for json_object in json_root:
@@ -235,8 +215,7 @@ def __segment(json_root):
             by_centre[centre] = centre_events
         centre_events.append(json_object)
 
-#    return by_user, by_city, by_event, by_session, by_centre
-    return by_user, by_event, by_session, by_centre
+    return by_user, by_event, by_centre
 
 
 def parseJson(json_structured):
@@ -270,10 +249,8 @@ def parseJson(json_structured):
 
 def writeCsvs(headings, json_root, csv_file_mantissa, csv_file_extender):
 
-    __propagate_user_properties_from_login(headings, json_root)
-
     #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
-    by_user, by_event, by_session, by_centre = __segment(json_root)
+    by_user, by_event, by_centre = __segment(json_root)
 
     with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
         writeCsv(headings, json_root, outputFile)
@@ -284,22 +261,10 @@ def writeCsvs(headings, json_root, csv_file_mantissa, csv_file_extender):
             with open(csv_file_mantissa + "_user_" + user + csv_file_extender, 'w') as outputFile:
                 writeCsv(headings, collection, outputFile)
 
-#    for city in by_city.keys():
-#        if city is not None:
-#            collection = by_city[city]
-#            with open(csv_file_mantissa + "_city_" + city + csv_file_extender, 'w') as outputFile:
-#                writeCsv(headings, collection, outputFile)
-
     for event in by_event.keys():
         if event is not None:
             collection = by_event[event]
             with open(csv_file_mantissa + "_event_" + event + csv_file_extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
-
-    for session in by_session.keys():
-        if session is not None:
-            collection = by_session[session]
-            with open(csv_file_mantissa + "_session_" + session + csv_file_extender, 'w') as outputFile:
                 writeCsv(headings, collection, outputFile)
 
     for centre in by_centre.keys():
@@ -395,46 +360,33 @@ def __output_digests(json_root):
             writer.writerow(rowarray)
 
 
-def __propagate_user_properties_from_login(headings, json_root):
-    headings.append("user_session_generated_id")
-    __user_retailer = {}
-    __user_area = {}
+def __propagate(__event_primary, __keys_primary, __key_primary, json_root):
 
+    __propaganda = []
+    for thang in __keys_primary:
+        __propaganda.append([thang, {}])
 
-    __user_session = {}
-    # print("Getting logins")
-    __key_event_login = "AnalyticsEventLogin"
+    # prime the pump
     for json_object in json_root:
-        uid = json_object[__key_user_id]
-        if json_object[__key_event_name] == __key_event_login:
-            # print(uid)
-            if uid not in __user_retailer.keys():
-                __user_retailer[uid] = json_object["user_retailer"]
-            if uid not in __user_area.keys():
-                __user_area[uid] = json_object["user_area"]
-            if uid not in __user_session.keys():
-                __user_session[uid] = 0
-    # print("Everything else")
+        id = json_object[__key_primary]
+        if json_object[__key_event_name] == __event_primary:
+            for __propagandum in __propaganda:
+                if id not in __propagandum[1].keys():
+                    __propagandum[1][id] = json_object[__propagandum[0]]
+
+    # push values down
     for json_object in json_root:
-        uid = json_object[__key_user_id]
-        # print(uid)
-        if json_object[__key_event_name] == __key_event_login:
-            __user_retailer[uid] = json_object["user_retailer"]
-            __user_area[uid] = json_object["user_area"]
-            __user_session[uid] += 1
+        id = json_object[__key_primary]
+
+        if json_object[__key_event_name] == __event_primary:
+            for __propagandum in __propaganda:
+                __propagandum[1][id] = json_object[__propagandum[0]]
         else:
-            if uid in __user_retailer.keys():
-                json_object["user_retailer"] = __user_retailer[uid]
-            else:
-                json_object["user_retailer"] = "User login not captured"
-            if uid in __user_area.keys():
-                json_object["user_area"] = __user_area[uid]
-            else:
-                json_object["user_retailer"] = "User login not captured"
-        if uid in __user_session.keys():
-            json_object["user_session_generated_id"] = uid + "_" + str(__user_session[uid])
-        else:
-            json_object["user_session_generated_id"] = "User login not captured"
+            for __propagandum in __propaganda:
+                if id in __propagandum[1].keys():
+                    json_object[__propagandum[0]] = __propagandum[1][id]
+                else:
+                    json_object[__propagandum[0]] = __event_primary + " not captured"
 
 
 def writeCsv(headings, rows, outputFile):
@@ -557,5 +509,5 @@ while True:
         break
 
 json_root_sorted = sorted(json_root, key=lambda element: element["event_timestamp"])
-
+__propagate(__key_event_login, ["user_retailer", "user_area"], __key_user_id, json_root_sorted)
 writeCsvs(headings, json_root_sorted, mantissa, extender)
