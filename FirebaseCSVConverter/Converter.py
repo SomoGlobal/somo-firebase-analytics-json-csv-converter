@@ -228,30 +228,6 @@ def parseJson(json_structured):
     return flatten(json_structured, __keys, __subkeys)
 
 
-def writeCsvs(headings, json_root, csv_file_mantissa, csv_file_extender):
-
-    with open(csv_file_mantissa + csv_file_extender, 'w') as outputFile:
-        writeCsv(headings, json_root, outputFile)
-
-    #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
-    tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
-
-    for tuple in tuples:
-        for key in tuple[1].keys():
-            if key is not None:
-                collection = tuple[1][key]
-                with open(csv_file_mantissa + "_" + tuple[0] + "_" + key + "_" + csv_file_extender, 'w') as outputFile:
-                    writeCsv(headings, collection, outputFile)
-
-    keypairs = [
-        ["button_press", "button_name"],
-        ["user_engagement", "firebase_screen_class"],
-        ["screen_view", "firebase_screen_class"]
-    ]
-
-    __output_digests(json_root, keypairs)
-
-
 def __output_digests(json_root, keypairs):
     namesets = {}
     counts = {}
@@ -454,4 +430,22 @@ while True:
 
 json_root_sorted = sorted(json_root, key=lambda element: element["event_timestamp"])
 __propagate(__key_event_login, ["user_retailer", "user_area"], __key_user_id, json_root_sorted)
-writeCsvs(headings, json_root_sorted, mantissa, extender)
+
+with open(mantissa + extender, 'w') as outputFile:
+    writeCsv(headings, json_root, outputFile)
+
+#    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
+#tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
+
+#for tuple in tuples:
+#    for key in tuple[1].keys():
+#        if key is not None:
+#            collection = tuple[1][key]
+#            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
+#                writeCsv(headings, collection, outputFile)
+
+#__output_digests(json_root, [
+#    ["button_press", "button_name"],
+#    ["user_engagement", "firebase_screen_class"],
+#    ["screen_view", "firebase_screen_class"]
+#])
