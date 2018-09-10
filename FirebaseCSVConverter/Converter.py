@@ -414,6 +414,8 @@ while True:
     try:
         json_file = next(json_file_iterator)
 
+        print("Reading " + str(json_file))
+
         with open(json_file, 'r') as inputFile:
 
             jsondata = json.load(inputFile)
@@ -432,6 +434,7 @@ json_root_sorted = sorted(json_root, key=lambda element: element["event_timestam
 __propagate(__key_event_login, ["user_retailer", "user_area"], __key_user_id, json_root_sorted)
 
 with open(mantissa + extender, 'w') as outputFile:
+    print("Writing " + mantissa + extender)
     writeCsv(headings, json_root, outputFile)
 
 #    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
