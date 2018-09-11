@@ -437,13 +437,13 @@ with open(mantissa + extender, 'w') as outputFile:
     print("Writing " + mantissa + extender)
     writeCsv(headings, json_root, outputFile)
 
-#    by_user, by_city, by_event, by_session, by_centre = __segment(json_root)
-#tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
+tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
 
 #for tuple in tuples:
 #    for key in tuple[1].keys():
 #        if key is not None:
 #            collection = tuple[1][key]
+#            print("Writing " + mantissa + "_" + tuple[0] + "_" + key + "_" + extender)
 #            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
 #                writeCsv(headings, collection, outputFile)
 
