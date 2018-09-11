@@ -8,6 +8,8 @@ import json
 import csv
 import glob
 import datetime
+import hashlib
+from numpy.core import long
 
 # "event_params": [
 #       {
@@ -20,6 +22,12 @@ import datetime
 #         }
 #       }
 #     ]
+__key_generated_session_id = "generated_session_id"
+__key_fragment_iso8601 = "iso8601"
+__key_fragment_offset = "offset"
+__key_fragment_timestamp = "timestamp"
+
+__reset_interval_microseconds = 1800000000
 __key_event_params = "event_params"
 
 
@@ -214,8 +222,8 @@ def parseJson(json_structured):
             if key not in __keys_structured:
                 if key not in __keys:
                     __keys.append(key)
-                    if "timestamp" in key and "offset" not in key:
-                        key2 = key.replace("timestamp", "iso8601")
+                    if __key_fragment_timestamp in key and __key_fragment_offset not in key:
+                        key2 = key.replace(__key_fragment_timestamp, __key_fragment_iso8601)
                         __keys.append(key2)
             else:
                 if key == __key_event_params or key == __key_user_properties:
@@ -308,6 +316,36 @@ def __propagate(__event_primary, __keys_primary, __key_primary, json_root):
                 else:
                     json_object[__propagandum[0]] = __event_primary + " not captured"
 
+def __create_sessions(__reset_pairs, __reset_interval, __correlation_key, json_root_sorted, __headings):
+    keyed_timestamps = {}
+    keyed_sessions = {}
+    for json_object in json_root_sorted:
+        time = json_object["event_timestamp"]
+        key = json_object[__correlation_key]
+
+        session_id = None
+
+        if key in keyed_sessions.keys():
+            if key in keyed_timestamps.keys():
+                if long(time) - long(keyed_timestamps[key]) < __reset_interval:
+                    session_id = keyed_sessions[key]
+
+        keyed_timestamps[key] = time
+
+        for pair in __reset_pairs:
+            if pair[0] in json_object.keys():
+                if json_object[pair[0]] == pair[1]:
+                    session_id = None
+
+        # fall through
+        if session_id is None:
+            session_id = hashlib.sha256(str(time).encode("utf-8")).hexdigest()
+            keyed_sessions[key] = session_id
+
+        json_object[__key_generated_session_id] = session_id
+
+    __headings.append(__key_generated_session_id)
+
 
 def writeCsv(headings, rows, outputFile):
     writer = csv.writer(outputFile, dialect='excel')
@@ -370,7 +408,7 @@ def getSubElements(__subkeys, treekey, json_object, row):
             if strang is not None:
                 output = strang
             elif timstomp is not None:
-                output = timstomp
+                output = long(timstomp)
             elif anteger is not None:
                 output = anteger
             elif floot is not None:
@@ -430,25 +468,26 @@ while True:
     except StopIteration:
         break
 
-json_root_sorted = sorted(json_root, key=lambda element: element["event_timestamp"])
-__propagate(__key_event_login, ["user_retailer", "user_area"], __key_user_id, json_root_sorted)
+json_root.sort(key=lambda element: element["event_timestamp"], reverse=False)
+__propagate(__key_event_login, ["user_retailer", "user_area"], __key_user_id, json_root)
+__create_sessions([[__key_event_name, __key_event_login], ["button_name", "refresh_session_dialogue_yes"]], __reset_interval_microseconds, __key_user_id, json_root, headings)
 
 with open(mantissa + extender, 'w') as outputFile:
     print("Writing " + mantissa + extender)
     writeCsv(headings, json_root, outputFile)
 
-tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer])
+tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer, __key_generated_session_id])
 
-#for tuple in tuples:
-#    for key in tuple[1].keys():
-#        if key is not None:
-#            collection = tuple[1][key]
-#            print("Writing " + mantissa + "_" + tuple[0] + "_" + key + "_" + extender)
-#            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
-#                writeCsv(headings, collection, outputFile)
+for tuple in tuples:
+    for key in tuple[1].keys():
+        if key is not None:
+            collection = tuple[1][key]
+            print("Writing " + mantissa + "_" + tuple[0] + "_" + key + "_" + extender)
+            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
+                writeCsv(headings, collection, outputFile)
 
-#__output_digests(json_root, [
-#    ["button_press", "button_name"],
-#    ["user_engagement", "firebase_screen_class"],
-#    ["screen_view", "firebase_screen_class"]
-#])
+__output_digests(json_root, [
+    ["button_press", "button_name"],
+    ["user_engagement", "firebase_screen_class"],
+    ["screen_view", "firebase_screen_class"]
+])
