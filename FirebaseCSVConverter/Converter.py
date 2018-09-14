@@ -22,12 +22,6 @@ from numpy.core import long
 #         }
 #       }
 #     ]
-__key_generated_session_id = "generated_session_id"
-__key_fragment_iso8601 = "iso8601"
-__key_fragment_offset = "offset"
-__key_fragment_timestamp = "timestamp"
-
-__reset_interval_microseconds = 1800000000
 __key_event_params = "event_params"
 
 
@@ -123,10 +117,10 @@ __subkeys_geo = [
 
 
 #     "app_info": {
-#       "id": "uk.co.skoda.assistant.ios",
+#       "id": "....",
 #       "version": "1.1.6",
 #       "install_store": null,
-#       "firebase_app_id": "1:571703561616:ios:777087d7f78ec12a",
+#       "firebase_app_id": "....",
 #       "install_source": "manual_install"
 #     }
 __key_app_info = "app_info"
@@ -186,6 +180,13 @@ __key_user_id = "user_id"
 __key_event_name = "event_name"
 __key_event_login = "AnalyticsEventLogin"
 __key_user_retailer = "user_retailer"
+__key_generated_session_id = "generated_session_id"
+__key_fragment_iso8601 = "iso8601"
+__key_fragment_offset = "offset"
+__key_fragment_timestamp = "timestamp"
+
+# constant for half an hour
+__reset_interval_microseconds = 1800000000
 
 
 
@@ -206,9 +207,14 @@ def __segment(json_root, keys):
 
     return tuples
 
-
+"""Parses Firebase analytics JSON from BigQuery, flexibly adding keys to make a flat structure"""
+""":param json_structured: the content of a Firebase analytics BigQuery JSON output file"""
 def parseJson(json_structured):
+
+    # key array will be used for dynamic assignment of keys
     __keys = []
+
+    # subkey dict will be used to extract information from fixed Firebase analytics event structures
     __subkeys = {}
     __subkeys[__key_event_params] = []
     __subkeys[__key_user_properties] = []
@@ -217,14 +223,21 @@ def parseJson(json_structured):
     __subkeys[__key_geo] = __subkeys_geo
     __subkeys[__key_traffic_source] = __subkeys_traffic_source
 
+    # first extract keys
     for json_object in json_structured:
+        # get basic keys at the top level, excluding known structures
         for key in json_object:
             if key not in __keys_structured:
                 if key not in __keys:
                     __keys.append(key)
+
+                    # add convenience converstions of µs since 1970 timestamps to ISO 8601
                     if __key_fragment_timestamp in key and __key_fragment_offset not in key:
                         key2 = key.replace(__key_fragment_timestamp, __key_fragment_iso8601)
                         __keys.append(key2)
+
+            # get keys for event parameters and user properties
+            # these are stored in JSON structures with a key element and a value object
             else:
                 if key == __key_event_params or key == __key_user_properties:
                     sublist = json_object[key]
@@ -233,8 +246,99 @@ def parseJson(json_structured):
                         if key2 not in __subkeys[key]:
                             __subkeys[key].append(key2)
 
+    # using the detected keyset, output a flat dictionary and a set of dictionary keys
     return flatten(json_structured, __keys, __subkeys)
 
+"""Takes an array of structured dictionaries based on a Firebase/BigQuery JSON analytics object and flattens it"""
+"""The principle here is that some elements are held in structures; these are moved into the top level."""
+"""This function takes a list of top level keys. These elements stay in the same place in the output."""
+"""It also takes a list of keys to be found in the user properties and event parameters sections. These are extracted using a helper function."""
+"""Finally it uses a global list of known structures to extract data from each of these, and flatten it into the output."""
+""":return headings: all the keys in the flattened output."""
+""":return output: the flattened output."""
+""":param json_list: the structured input array"""
+""":param __keys: all the top level keys"""
+""":param __subkeys: all the dynamically detected keys for getting at each structured element"""
+def flatten(json_list, __keys, __subkeys):
+    headings = __keys \
+               + __subkeys[__key_event_params] \
+               + __subkeys[__key_user_properties] \
+               + __subkeys[__key_app_info] \
+               + __subkeys[__key_device] \
+               + __subkeys[__key_geo] \
+               + __subkeys[__key_traffic_source]
+
+    output = []
+
+    """ write data """
+    for json_object in json_list:
+        row = {}
+        for key in headings:
+            row[key] = tryGet(json_object, key)
+
+        getSubElements(__subkeys, __key_event_params, json_object, row)
+        getSubElements(__subkeys, __key_user_properties, json_object, row)
+        getStructElements(__subkeys, __key_app_info, json_object, row)
+        getStructElements(__subkeys, __key_device, json_object, row)
+        getStructElements(__subkeys, __key_geo, json_object, row)
+        getStructElements(__subkeys, __key_traffic_source, json_object, row)
+
+        output.append(row)
+
+    return headings, output
+
+"""Gets data from event parameter and user properties structures."""
+def getSubElements(__subkeys, treekey, json_object, row):
+    tree = json_object[treekey]
+    treedict = {}
+    for key in __subkeys[treekey]:
+        treedict[key] = ""
+    if tree is not None:
+        for element in tree:
+            treedict[element[__key_key]] = element
+    for key in __subkeys[treekey]:
+        root = treedict[key]
+        value = root[__key_value] if __key_value in root else None
+        output = ""
+        if value is not None:
+            strang = value[__key_sv] if __key_sv in value else None
+            anteger = value[__key_iv] if __key_iv in value else None
+            floot = value[__key_fv] if __key_fv in value else None
+            dibble = value[__key_dv] if __key_dv in value else None
+            timstomp = value[__key_ts_mic] if __key_ts_mic in value else None
+            if strang is not None:
+                output = strang
+            elif timstomp is not None:
+                output = long(timstomp)
+            elif anteger is not None:
+                output = anteger
+            elif floot is not None:
+                output = floot
+            elif dibble is not None:
+                output = dibble
+        row[key] = output
+
+"""Failsafe accessor for values contained in branches of the main tree structure"""
+def getStructElements(__subkeys, treekey, json_object, row):
+    tree = json_object[treekey]
+    for key in __subkeys[treekey]:
+        row[key] = tryGet(tree, key)
+
+
+"""Failsafe accessor for dictionary values"""
+def tryGet(json_object, key):
+    if key in json_object:
+        return json_object[key]
+    # because iso8601s are generated, look for the equivalent timestamp and convert
+    elif "iso8601" in key:
+        timestamp = tryGet(json_object, key.replace("iso8601", "timestamp"))
+        if timestamp is not None and timestamp != '':
+            # we assume that timestamps are in µs from 1970
+            return datetime.datetime.fromtimestamp(int(timestamp[:-6])).isoformat()
+        else:
+            return ''
+    else:
+        return ''
 
 def __output_digests(json_root, keypairs):
     namesets = {}
@@ -359,83 +463,6 @@ def writeCsv(headings, rows, outputFile):
                 rowarray.append("")
         writer.writerow(rowarray)
 
-def flatten(json_list, __keys, __subkeys):
-    headings = __keys \
-               + __subkeys[__key_event_params] \
-               + __subkeys[__key_user_properties] \
-               + __subkeys[__key_app_info] \
-               + __subkeys[__key_device] \
-               + __subkeys[__key_geo] \
-               + __subkeys[__key_traffic_source]
-
-    output = []
-
-    """ write data """
-    for json_object in json_list:
-        row = {}
-        for key in headings:
-            row[key] = tryGet(json_object, key)
-
-        getSubElements(__subkeys, __key_event_params, json_object, row)
-        getSubElements(__subkeys, __key_user_properties, json_object, row)
-        getStructElements(__subkeys, __key_app_info, json_object, row)
-        getStructElements(__subkeys, __key_device, json_object, row)
-        getStructElements(__subkeys, __key_geo, json_object, row)
-        getStructElements(__subkeys, __key_traffic_source, json_object, row)
-
-        output.append(row)
-
-    return headings, output
-
-def getSubElements(__subkeys, treekey, json_object, row):
-    tree = json_object[treekey]
-    treedict = {}
-    for key in __subkeys[treekey]:
-        treedict[key] = ""
-    if tree is not None:
-        for element in tree:
-            treedict[element[__key_key]] = element
-    for key in __subkeys[treekey]:
-        root = treedict[key]
-        value = root[__key_value] if __key_value in root else None
-        output = ""
-        if value is not None:
-            strang = value[__key_sv] if __key_sv in value else None
-            anteger = value[__key_iv] if __key_iv in value else None
-            floot = value[__key_fv] if __key_fv in value else None
-            dibble = value[__key_dv] if __key_dv in value else None
-            timstomp = value[__key_ts_mic] if __key_ts_mic in value else None
-            if strang is not None:
-                output = strang
-            elif timstomp is not None:
-                output = long(timstomp)
-            elif anteger is not None:
-                output = anteger
-            elif floot is not None:
-                output = floot
-            elif dibble is not None:
-                output = dibble
-        row[key] = output
-
-
-def getStructElements(__subkeys, treekey, json_object, row):
-    tree = json_object[treekey]
-    for key in __subkeys[treekey]:
-        row[key] = tryGet(tree, key)
-
-
-def tryGet(json_object, key):
-    if key in json_object:
-        return json_object[key]
-    elif "iso8601" in key:
-        timestamp = tryGet(json_object, key.replace("iso8601", "timestamp"))
-        if timestamp is not None and timestamp != '':
-            # print(timestamp[:-6])
-            return datetime.datetime.fromtimestamp(int(timestamp[:-6])).isoformat()
-        else:
-            return ''
-    else:
-        return ''
 
 if __name__ == '__main__':
     pass
