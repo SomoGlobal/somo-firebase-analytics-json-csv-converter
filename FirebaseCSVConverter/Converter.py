@@ -481,16 +481,19 @@ while True:
 
         print("Reading " + str(json_file))
 
-        with open(json_file, 'r') as inputFile:
+        try:
+            with open(json_file, 'r') as inputFile:
 
-            jsondata = json.load(inputFile)
-            __headings, __json_root = parseJson(jsondata)
+                jsondata = json.load(inputFile)
+                __headings, __json_root = parseJson(jsondata)
 
-            for heading in __headings:
-                if heading not in headings:
-                    headings.append(heading)
+                for heading in __headings:
+                    if heading not in headings:
+                        headings.append(heading)
 
-            json_root.extend(__json_root)
+                json_root.extend(__json_root)
+        except json.decoder.JSONDecodeError as decodeError:
+            print("JSON error in " + str(json_file) + ": " + str(decodeError))
 
     except StopIteration:
         break
@@ -503,18 +506,18 @@ with open(mantissa + extender, 'w') as outputFile:
     print("Writing " + mantissa + extender)
     writeCsv(headings, json_root, outputFile)
 
-tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer, __key_generated_session_id])
+#tuples = __segment(json_root, [__key_user_id, __key_event_name, __key_user_retailer, __key_generated_session_id])
 
-for tuple in tuples:
-    for key in tuple[1].keys():
-        if key is not None:
-            collection = tuple[1][key]
-            print("Writing " + mantissa + "_" + tuple[0] + "_" + key + "_" + extender)
-            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
-                writeCsv(headings, collection, outputFile)
+#for tuple in tuples:
+#    for key in tuple[1].keys():
+#        if key is not None:
+#            collection = tuple[1][key]
+#            print("Writing " + mantissa + "_" + tuple[0] + "_" + key + "_" + extender)
+#            with open(mantissa + "_" + tuple[0] + "_" + key + "_" + extender, 'w') as outputFile:
+#                writeCsv(headings, collection, outputFile)
 
-__output_digests(json_root, [
-    ["button_press", "button_name"],
-    ["user_engagement", "firebase_screen_class"],
-    ["screen_view", "firebase_screen_class"]
-])
+#__output_digests(json_root, [
+#    ["button_press", "button_name"],
+#    ["user_engagement", "firebase_screen_class"],
+#    ["screen_view", "firebase_screen_class"]
+#])
